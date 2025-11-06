@@ -1,0 +1,29 @@
+/****** Object:  Table [dbo].[Log_StoredProcedureVersion]    Script Date: 06-11-2025 16:47:59 ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE TABLE [dbo].[Log_StoredProcedureVersion](
+	[ID] [int] IDENTITY(1,1) NOT NULL,
+	[ProcedureName] [nvarchar](128) NOT NULL,
+	[SchemaName] [nvarchar](128) NOT NULL,
+	[VersionNumber] [int] NOT NULL,
+	[ActionType] [nvarchar](20) NOT NULL,
+	[ScriptContent] [nvarchar](max) NULL,
+	[DiffContent] [nvarchar](max) NULL,
+	[ChangeDetails] [nvarchar](max) NULL,
+	[ChangedDateTime] [datetime] NOT NULL,
+	[ChangedBy] [nvarchar](128) NOT NULL,
+PRIMARY KEY CLUSTERED 
+(
+	[ID] ASC
+)WITH (STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
+GO
+
+ALTER TABLE [dbo].[Log_StoredProcedureVersion] ADD  DEFAULT (getutcdate()) FOR [ChangedDateTime]
+GO
+
+
