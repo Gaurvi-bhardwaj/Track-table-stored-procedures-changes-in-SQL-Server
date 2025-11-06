@@ -7,3 +7,22 @@ can be done by :
 
 I have created Stored procedure for tracking table changes (table created/dropped, column added/dropped, data type change, nullability change)
 and trigger to detect changes in stored procedures(create/alter/drop) who made that change at what time and what exact change.
+
+
+Run following queries to get results :
+
+1. for table changes:
+   select * from [dbo].[SchemaChangeLog]  
+   order by LogID desc;
+
+
+3. for stored procedure changes :
+   SELECT *
+   FROM dbo.Log_StoredProcedureVersion
+   ORDER BY ChangedDateTime DESC;
+
+
+   
+
+
+
