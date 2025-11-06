@@ -1,0 +1,16 @@
+/****** Object:  Table [dbo].[SchemaSnapshot_Last]    Script Date: 06-11-2025 16:52:05 ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE TABLE [dbo].[SchemaSnapshot_Last](
+	[TableName] [nvarchar](128) NULL,
+	[ColumnName] [nvarchar](128) NULL,
+	[DataType] [nvarchar](128) NULL,
+	[IsNullable] [nvarchar](10) NULL
+) ON [PRIMARY]
+GO
+
+
