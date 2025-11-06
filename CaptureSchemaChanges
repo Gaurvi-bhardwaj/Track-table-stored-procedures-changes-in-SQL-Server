@@ -1,0 +1,89 @@
+/****** Object:  StoredProcedure [dbo].[CaptureSchemaChanges]    Script Date: 06-11-2025 16:44:25 ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE PROCEDURE [dbo].[CaptureSchemaChanges]
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Current schema
+    IF OBJECT_ID('tempdb..#CurrentSchema') IS NOT NULL
+        DROP TABLE #CurrentSchema;
+
+    SELECT  
+        t.name AS TableName,
+        c.name AS ColumnName,
+        ty.name AS DataType,
+        CASE WHEN c.is_nullable = 1 THEN 'YES' ELSE 'NO' END AS IsNullable
+    INTO #CurrentSchema
+    FROM sys.columns c
+    JOIN sys.tables t ON c.object_id = t.object_id
+    JOIN sys.types ty ON c.user_type_id = ty.user_type_id;
+
+    -- First-time initialization
+    IF NOT EXISTS (SELECT 1 FROM dbo.SchemaSnapshot_Last)
+    BEGIN
+        INSERT INTO dbo.SchemaSnapshot_Last SELECT * FROM #CurrentSchema;
+        RETURN;  -- no logging on first run
+    END
+
+    -- Identify new tables
+    INSERT INTO dbo.SchemaChangeLog (TableName, ChangeType)
+    SELECT DISTINCT c.TableName, 'Table Created'
+    FROM #CurrentSchema c
+    EXCEPT
+    SELECT DISTINCT s.TableName, 'Table Created'
+    FROM dbo.SchemaSnapshot_Last s;
+
+    -- Identify dropped tables
+    INSERT INTO dbo.SchemaChangeLog (TableName, ChangeType)
+    SELECT DISTINCT s.TableName, 'Table Dropped'
+    FROM dbo.SchemaSnapshot_Last s
+    EXCEPT
+    SELECT DISTINCT c.TableName, 'Table Dropped'
+    FROM #CurrentSchema c;
+
+    -- Column-level changes
+    -- 1. DataType change
+    INSERT INTO dbo.SchemaChangeLog (TableName, ColumnName, OldDataType, NewDataType, OldNullable, NewNullable, ChangeType)
+    SELECT s.TableName, s.ColumnName, s.DataType, c.DataType, s.IsNullable, c.IsNullable, 'DataType Changed'
+    FROM dbo.SchemaSnapshot_Last s
+    JOIN #CurrentSchema c 
+        ON s.TableName = c.TableName AND s.ColumnName = c.ColumnName
+    WHERE s.DataType <> c.DataType;
+
+    -- 2. Nullability change
+    INSERT INTO dbo.SchemaChangeLog (TableName, ColumnName, OldDataType, NewDataType, OldNullable, NewNullable, ChangeType)
+    SELECT s.TableName, s.ColumnName, s.DataType, c.DataType, s.IsNullable, c.IsNullable, 'Nullability Changed'
+    FROM dbo.SchemaSnapshot_Last s
+    JOIN #CurrentSchema c 
+        ON s.TableName = c.TableName AND s.ColumnName = c.ColumnName
+    WHERE s.IsNullable <> c.IsNullable;
+
+    -- 3. New columns
+    INSERT INTO dbo.SchemaChangeLog (TableName, ColumnName, OldDataType, NewDataType, OldNullable, NewNullable, ChangeType)
+    SELECT c.TableName, c.ColumnName, NULL, c.DataType, NULL, c.IsNullable, 'Column Added'
+    FROM #CurrentSchema c
+    LEFT JOIN dbo.SchemaSnapshot_Last s 
+        ON c.TableName = s.TableName AND c.ColumnName = s.ColumnName
+    WHERE s.ColumnName IS NULL;
+
+    -- 4. Dropped columns
+    INSERT INTO dbo.SchemaChangeLog (TableName, ColumnName, OldDataType, NewDataType, OldNullable, NewNullable, ChangeType)
+    SELECT s.TableName, s.ColumnName, s.DataType, NULL, s.IsNullable, NULL, 'Column Dropped'
+    FROM dbo.SchemaSnapshot_Last s
+    LEFT JOIN #CurrentSchema c 
+        ON s.TableName = c.TableName AND s.ColumnName = c.ColumnName
+    WHERE c.ColumnName IS NULL;
+
+    -- Refresh snapshot
+    TRUNCATE TABLE dbo.SchemaSnapshot_Last;
+    INSERT INTO dbo.SchemaSnapshot_Last SELECT * FROM #CurrentSchema;
+END;
+GO
+
+
