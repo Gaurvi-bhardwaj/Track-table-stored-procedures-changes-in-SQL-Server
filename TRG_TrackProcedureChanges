@@ -1,0 +1,127 @@
+/****** Object:  DdlTrigger [TRG_TrackProcedureChanges]    Script Date: 06-11-2025 16:45:42 ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+CREATE TRIGGER [TRG_TrackProcedureChanges]
+ON DATABASE
+FOR CREATE_PROCEDURE, ALTER_PROCEDURE, DROP_PROCEDURE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE 
+        @eventData XML = EVENTDATA(),
+        @procName NVARCHAR(128),
+        @schemaName NVARCHAR(128),
+        @objectId INT,
+        @action NVARCHAR(20),
+        @fullScript NVARCHAR(MAX),
+        @previousScript NVARCHAR(MAX),
+        @added NVARCHAR(MAX) = '',
+        @removed NVARCHAR(MAX) = '',
+        @versionNumber INT;
+
+    -- Extract event info
+    SET @procName = @eventData.value('(/EVENT_INSTANCE/ObjectName)[1]', 'NVARCHAR(128)');
+    SET @schemaName = @eventData.value('(/EVENT_INSTANCE/SchemaName)[1]', 'NVARCHAR(128)');
+    SET @action = @eventData.value('(/EVENT_INSTANCE/EventType)[1]', 'NVARCHAR(20)');
+    SET @objectId = OBJECT_ID(QUOTENAME(@schemaName) + '.' + QUOTENAME(@procName));
+
+    -- CREATE / ALTER
+    IF @action IN ('CREATE_PROCEDURE','ALTER_PROCEDURE')
+    BEGIN
+        -- Get current definition
+        SELECT @fullScript = sm.definition
+        FROM sys.sql_modules sm
+        WHERE sm.object_id = @objectId;
+
+        -- Get last saved version
+        SELECT TOP 1 
+            @previousScript = ScriptContent,
+            @versionNumber = VersionNumber
+        FROM dbo.Log_StoredProcedureVersion
+        WHERE SchemaName = @schemaName AND ProcedureName = @procName
+        ORDER BY ChangedDateTime DESC;
+
+        SET @versionNumber = ISNULL(@versionNumber, 0) + 1;
+
+        -- Compute AddedLines & RemovedLines
+        IF @previousScript IS NOT NULL
+        BEGIN
+            -- Added lines
+            SELECT @added = STRING_AGG(value, CHAR(13)+CHAR(10))
+            FROM (
+                SELECT LTRIM(RTRIM(value)) AS value
+                FROM STRING_SPLIT(@fullScript, CHAR(10))
+                EXCEPT
+                SELECT LTRIM(RTRIM(value)) AS value
+                FROM STRING_SPLIT(@previousScript, CHAR(10))
+            ) A;
+
+            -- Removed lines
+            SELECT @removed = STRING_AGG(value, CHAR(13)+CHAR(10))
+            FROM (
+                SELECT LTRIM(RTRIM(value)) AS value
+                FROM STRING_SPLIT(@previousScript, CHAR(10))
+                EXCEPT
+                SELECT LTRIM(RTRIM(value)) AS value
+                FROM STRING_SPLIT(@fullScript, CHAR(10))
+            ) R;
+        END
+
+        -- Insert new version
+        INSERT INTO dbo.Log_StoredProcedureVersion
+        (
+            ProcedureName, SchemaName, VersionNumber, ActionType,
+            ScriptContent, DiffContent, ChangeDetails, ChangedDateTime, ChangedBy
+        )
+        VALUES
+        (
+            @procName, @schemaName, @versionNumber, @action,
+            @fullScript, 
+            'Previous:' + ISNULL(@previousScript,'') + CHAR(13)+CHAR(10) + 
+            'Current:' + ISNULL(@fullScript,''),
+            'Added:' + ISNULL(@added,'') + CHAR(13)+CHAR(10) + 
+            'Removed:' + ISNULL(@removed,''),
+            GETUTCDATE(), SUSER_SNAME()
+        );
+    END
+
+    -- DROP
+    ELSE IF @action = 'DROP_PROCEDURE'
+    BEGIN
+        SELECT TOP 1 
+            @previousScript = ScriptContent,
+            @versionNumber = VersionNumber
+        FROM dbo.Log_StoredProcedureVersion
+        WHERE SchemaName = @schemaName AND ProcedureName = @procName
+        ORDER BY ChangedDateTime DESC;
+
+        SET @versionNumber = ISNULL(@versionNumber, 0) + 1;
+
+        INSERT INTO dbo.Log_StoredProcedureVersion
+        (
+            ProcedureName, SchemaName, VersionNumber, ActionType,
+            ScriptContent, DiffContent, ChangeDetails, ChangedDateTime, ChangedBy
+        )
+        VALUES
+        (
+            @procName, @schemaName, @versionNumber, 'DROP_PROCEDURE',
+            NULL, 
+            'Procedure dropped. Previous Script:' + ISNULL(@previousScript,''),
+            'Removed Entire Procedure',
+            GETUTCDATE(), SUSER_SNAME()
+        );
+    END
+END;
+GO
+
+ENABLE TRIGGER [TRG_TrackProcedureChanges] ON DATABASE
+GO
+
+
