@@ -12,11 +12,13 @@ and trigger to detect changes in stored procedures(create/alter/drop) who made t
 Run following queries to get results :
 
 1. for table changes:
+   
    select * from [dbo].[SchemaChangeLog]  
    order by LogID desc;
 
 
 3. for stored procedure changes :
+   
    SELECT *
    FROM dbo.Log_StoredProcedureVersion
    ORDER BY ChangedDateTime DESC;
