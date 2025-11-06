@@ -1,0 +1,28 @@
+/****** Object:  Table [dbo].[SchemaChangeLog]    Script Date: 06-11-2025 16:50:13 ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE TABLE [dbo].[SchemaChangeLog](
+	[LogID] [int] IDENTITY(1,1) NOT NULL,
+	[ChangeDate] [date] NOT NULL,
+	[TableName] [nvarchar](128) NULL,
+	[ColumnName] [nvarchar](128) NULL,
+	[OldDataType] [nvarchar](128) NULL,
+	[NewDataType] [nvarchar](128) NULL,
+	[OldNullable] [nvarchar](10) NULL,
+	[NewNullable] [nvarchar](10) NULL,
+	[ChangeType] [nvarchar](50) NULL,
+PRIMARY KEY CLUSTERED 
+(
+	[LogID] ASC
+)WITH (STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+
+ALTER TABLE [dbo].[SchemaChangeLog] ADD  DEFAULT (CONVERT([date],getdate())) FOR [ChangeDate]
+GO
+
+
